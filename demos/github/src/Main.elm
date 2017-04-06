@@ -1,8 +1,11 @@
 module Main exposing (..)
 
+import Http
 import Html exposing (..)
-import Html.Attributes exposing (class, disabled, type_, value)
-import Html.Events exposing (onInput)
+import Html.Attributes exposing (class, disabled, type_, value, src)
+import Html.Events exposing (onInput, onClick)
+import Json.Decode  exposing (Decoder, string, int)
+import Json.Decode.Pipeline exposing (required, decode)
 
 
 type alias User =
@@ -13,6 +16,14 @@ type alias User =
     , avatarUrl : String
     }
 
+userDecoder : Decoder User
+userDecoder =
+  decode User
+    |> required "id" int
+    |> required "login" string
+    |> required "name" string
+    |> required "bio" string
+    |> required "avatar_url" string
 
 type alias Model =
     { login : String
@@ -22,6 +33,8 @@ type alias Model =
 
 type Msg
     = UpdateLogin String
+    | FetchUser
+    | ReceiveUser (Result Http.Error User)
 
 
 initialModel : Model
@@ -33,6 +46,13 @@ init : ( Model, Cmd Msg )
 init =
     ( initialModel, Cmd.none )
 
+fetchUser : String -> Cmd Msg
+fetchUser login =
+  let
+      url = "http://localhost:3001/users/" ++ login
+      request = Http.get url userDecoder
+  in
+      Http.send ReceiveUser request
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -42,9 +62,33 @@ update msg model =
             , Cmd.none
             )
 
+        FetchUser ->
+          ( model, fetchUser model.login )
 
-view : Model -> Html Msg
-view model =
+        ReceiveUser result ->
+          case result of
+            Ok user ->
+              ({ model | user = Just user},
+               Cmd.none
+              )
+
+            Err _ -> Debug.crash("can't find") (model, Cmd.none)
+
+userView : User -> Html Msg
+userView user =
+  div [ class "view-user" ]
+      [ img
+        [ src user.avatarUrl ]
+        [],
+        div []
+          [ h2 [] [text user.name ],
+            p [] [text user.bio ]
+          ]
+      ]
+
+
+findUserView : Model -> Html Msg
+findUserView model =
     div [ class "find-user" ]
         [ h2 [] [ text "Find GitHub User" ]
         , label [] [ text "Login:" ]
@@ -57,9 +101,18 @@ view model =
         , button
             [ class "btn btn-primary"
             , disabled (model.login == "")
+            , onClick FetchUser
             ]
             [ text "Find" ]
         ]
+
+view : Model -> Html Msg
+view model =
+  case model.user of
+    Just user ->
+      userView user
+    Nothing ->
+      findUserView model
 
 
 subscriptions : Model -> Sub msg
